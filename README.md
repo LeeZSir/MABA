@@ -13,3 +13,7 @@ The repositories of the evaluated models are listed below. Please follow their l
 - **Qwen-VL**: [https://github.com/QwenLM/Qwen-VL](https://github.com/QwenLM/Qwen-VL)  
 - **MiniCPM**: [https://github.com/OpenBMB/MiniCPM](https://github.com/OpenBMB/MiniCPM)  
 - **InternVL3**: [https://github.com/OpenGVLab/InternVL](https://github.com/OpenGVLab/InternVL)
+
+  ## Acknowledgements
+This codebase is partially based on the implementation from  
+[jiaxiaojunQAQ/SA-AET](https://github.com/jiaxiaojunQAQ/SA-AET).
