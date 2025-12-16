@@ -27,7 +27,7 @@ from models.blip_model.blip_retrieval import blip_retrieval
 import utils
 import copy
 import time
-from MABA import TFCAttacker, TFCImageAttacker, TFCTextAttacker
+from MABA import MABAttacker, MABImageAttacker, MABTextAttacker
 from dataset import paired_dataset2
 
 def toImage(norm_img):
@@ -48,9 +48,9 @@ def adv_gen(model, ref_model, t_models, t_ref_models, t_ref_models_d, t_test_tra
     else:
         max_length = 77
     # Initialize attacker
-    img_attacker = TFCImageAttacker(images_normalize, eps=16/255, steps=30, step_size=3/255, args = args)
+    img_attacker = MABImageAttacker(images_normalize, eps=16/255, steps=30, step_size=3/255, args = args)
     txt_attacker = TextAttacker(ref_model, tokenizer, cls=False, max_length=max_length, number_perturbation=1, topk=10, threshold_pred_score=0.3)
-    attacker = TFCAttacker(model, img_attacker, txt_attacker, args)
+    attacker = MABAttacker(model, img_attacker, txt_attacker, args)
 
     print('Prepare memory')
 

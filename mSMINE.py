@@ -211,10 +211,6 @@ def get_scaled_imgs(imgs, scales=None, adv_imgs = None, device='cuda'):
         inplace=False             # 安全模式（默认）
     )
     Rotation_transform = transforms. RandomRotation(30)
-    # ColorJitter_transform = transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.0)
-    # ScMix_transform = ScMix(isCenter=True, size=int(imgs.shape[-1]*0.45), p=0.5, ratio=0.4)
-    # ScMix_Original_transform = ScMix_Original(isCenter=True, size=int(imgs.shape[-1]*0.45), p = 1, ratio= 0.5,image_ratio=0.2) # ratio无意义
-    # ScMix_Full_transform = ScMix_Full(isCenter=True, size=int(imgs.shape[-1]*0.45), p=1, ratio=0.2,image_ratio=0.2)
     scaled_imgs_list = []  # 用于存放每个缩放比例生成的图像版本
     for ratio in scales:
         # 根据缩放因子计算新的尺寸
@@ -224,28 +220,14 @@ def get_scaled_imgs(imgs, scales=None, adv_imgs = None, device='cuda'):
         # 给原图加上噪声（各尺度可以使用不同噪声，也可以根据需要调整）
         noise = torch.from_numpy(np.random.normal(0.0, 0.05, imgs.shape)).float().to(device)
         temp_imgs = imgs + noise
-        # save_image(temp_imgs[0],"temp_img.png")
-        # Cut/Corp/Erase类增强以增强迁移性
-        # temp_imgs = ColorJitter_transform(temp_imgs)
-        # temp_imgs = Rotation_transform(temp_imgs)
-        # temp_imgs = ScMix_transform(temp_imgs)
-        # temp_imgs = ScMix_Original_transform(temp_imgs)
-        # temp_imgs = ScMix_Full_transform(temp_imgs)
         temp_imgs = Erasing_transform(temp_imgs)
-        # temp_imgs = Mask_transform(temp_imgs)
-        # save_image(temp_imgs[0],"Mask.png")
-        # exit(1)
         # 对加噪后的图像进行缩放
         temp_imgs = scale_transform(temp_imgs)
-        # save_image(temp_imgs[0],"Scaled_ScMix_Full.png")
         # 限制像素值范围在 [0, 1]
         temp_imgs = torch.clamp(temp_imgs, 0.0, 1.0)
         # 将缩放后的图像恢复到原始尺寸
         temp_imgs = reverse_transform(temp_imgs)
-        # save_image(temp_imgs[0],"Clamped_Mask.png")
-
         scaled_imgs_list.append(temp_imgs)
-    # exit(1)
     # 将原图与各个尺度的图像按新维度堆叠：
     # 每个缩放版本的形状均为 [B, C, H, W]，stack 后输出形状为 [B, scales_num+1, C, H, W]
     if adv_imgs is not None:
@@ -386,10 +368,8 @@ def main(args, config):
     if args.source_model in ['ALBEF', 'TCL']:
         # Initialize learnable slicing matrices
         sX = nn.Parameter(torch.randn(config['embed_dim'], config['embed_dim']- 35, device=device))
-        # sY = nn.Parameter(torch.randn(config['embed_dim'], config['embed_dim']-32, device=device))
     else:
         sX = nn.Parameter(torch.randn(model.visual.output_dim, model.visual.output_dim - 384, device=device, dtype=torch.float32))
-        # sY = nn.Parameter(torch.randn(model.visual.output_dim, model.visual.output_dim-256, device=device, dtype=torch.float32))   
 
     # Define optimizer (include slicing matrices)
     optimizer = torch.optim.Adam(list(NE.parameters()) + [sX], lr=args.lr)
@@ -398,9 +378,6 @@ def main(args, config):
     # CosLR
     num_epochs = config.get('num_epochs',100)
     # mSMI Parameters
-    # import spacy  # 需要安装spacy和英文模型（python -m spacy download en_core_web_sm）
-    # 初始化spacy模型,用于后续选词
-    # nlp = spacy.load("en_core_web_sm")
     # 负样本数量 (后续可调整)
     num_neg_samples = 10
     # 图像对应文本数
@@ -442,10 +419,6 @@ def main(args, config):
                 non_matched_texts = list(set(texts_ids) - set(text_ids_groups[i]))  # 排除当前图像的文本
                 negative_texts_ids.append(random.sample(non_matched_texts, num_neg_samples))  # 采样负例
 
-            # temp_images = images.detach().clone().to(device)
-            # adv_imgs,_,_ = attacker.attack( temp_images, texts, txt2img, device=device, max_length=max_length, scales=None)
-            # print(adv_imgs.shape)
-            # exit(1)
             images = images.to(device)
             # 获取增强图像
             images = get_scaled_imgs(images, scales, None, device)
@@ -465,7 +438,6 @@ def main(args, config):
                 texts_input = tokenizer(texts, padding='max_length', truncation=True, max_length=max_length, 
                         return_tensors="pt").to(device)
                 masked_input, labels = random_mask(texts_input.input_ids, tokenizer, device)
-                # masked_input, labels = entity_aware_masking(texts_input.input_ids, tokenizer, nlp, device)
                 texts_input.input_ids = masked_input
                 # 再对增强后的输入应用随机交换，swap_prob默认值为0.6
                 swapped_input = random_swap(texts_input.input_ids, tokenizer, device, swap_prob = 1)
@@ -499,10 +471,7 @@ def main(args, config):
             Q_sX, _ = torch.linalg.qr(sX)
             # Q_sY, _ = torch.linalg.qr(sY)
 
-            # # Only slicing
-            # batch_image_cls_proj = torch.matmul(batch_image_cls, projection_matrix)  # (batch_size, num_neg_samples, embed_dim)
-            # batch_text_cls_proj = batch_text_cls @ projection_matrix
-            # negative_batch_text_cls_proj = torch.matmul(negative_batch_text_cls, projection_matrix)  # (batch_size, num_neg_samples, embed_dim)
+            # Only slicing
             batch_image_cls_proj = torch.matmul(batch_image_cls, Q_sX)  # (batch_size, num_neg_samples, embed_dim)
             batch_text_cls_proj = batch_text_cls @ Q_sX
             negative_batch_text_cls_proj = torch.matmul(negative_batch_text_cls, Q_sX)  # (batch_size, num_neg_samples, embed_dim)
@@ -510,7 +479,6 @@ def main(args, config):
             g, g0_logsumexp,It_loss,loss = NE(batch_image_cls_proj, batch_text_cls_proj, negative_batch_text_cls_proj, txt2img, match_num=match_num, K=num_neg_samples)
             
             # Backpropagation, stochastic gradient-ascent
-            # (-It_loss).backward()
             (-loss).backward()
             optimizer.step()
 
@@ -551,9 +519,6 @@ def main(args, config):
             f.write("sX:\n")
             sX_str = np.array2string(sX.detach().cpu().numpy(), precision=4, separator=', ')
             f.write(sX_str)
-            # f.write("\n\nsY:\n")
-            # sY_str = np.array2string(sY.detach().cpu().numpy(), precision=4, separator=', ')
-            # f.write(sY_str)
 
         # 保存 NE 模型和切片矩阵
         torch.save(NE.state_dict(), os.path.join(save_dir, f'NE_epoch_{epoch+1}.pt'))

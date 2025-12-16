@@ -37,47 +37,6 @@ class_ns_windows = "https://accessibility.windows.example.org/ns/class"
 # More namespaces defined in OSWorld, please check desktop_env/server/main.py
 import json
 
-def load_captions(reference_file, generated_file, system_message):
-    import json
-
-    with open(reference_file, 'r') as f:
-        reference_data = json.load(f)
-    with open(generated_file, 'r') as f:
-        generated_data = json.load(f)
-
-    # 将 reference 数据转为 image_id -> concatenated reference caption 映射
-    ref_dict = {
-        int(obj["image"].split("_")[-1].split(".")[0]): " ".join(obj["caption"])
-        for obj in reference_data
-    }
-
-    # 构建 image_id 匹配后的任务消息列表
-    all_messages = []
-    for obj in generated_data:
-        image_id = obj["image_id"]
-        generated_caption = obj["caption"]
-        reference_caption = ref_dict.get(image_id)
-
-        if reference_caption:
-            messages = [
-                {
-                    "role": "system",
-                    "content": system_message
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Rate the semantic similarity between the following two texts on a scale from 0 to 1.\n\n"
-                        f"**Reference Caption:** {reference_caption}\n"
-                        f"**Generated Caption:** {generated_caption}"
-                    )
-                }
-            ]
-            all_messages.append((image_id, reference_caption, generated_caption, messages))
-
-    return all_messages
-
-
 class PromptAgent:
     def __init__(
         self,
