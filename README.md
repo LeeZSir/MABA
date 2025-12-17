@@ -1,5 +1,3 @@
-````md
-
 # MABA
 
 **Paper:** *On Evaluating the Robustness of Large Vision-Language Models via Untargeted Modality Alignment Breaking Adversarial Attack*
@@ -26,16 +24,12 @@ The evaluation pipeline is primarily adapted from **Qwen-VL**.
 
 ---
 
-
 ## ⚙️ Environment Preparation
 
 ### 1. Basic Installation
 
 ```bash
 pip install -r requirements.txt
-````
-
----
 
 ### 2. Model Configuration
 
