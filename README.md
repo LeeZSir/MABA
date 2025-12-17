@@ -30,7 +30,7 @@ The evaluation pipeline is primarily adapted from **Qwen-VL**.
 
 ```bash
 pip install -r requirements.txt
-**
+```
 ### 2. Model Configuration
 
 To test a wide range of LVLM families, we **strongly recommend** creating **separate virtual environments** for different models, as they often rely on incompatible `transformers` versions.
@@ -51,7 +51,7 @@ To test a wide range of LVLM families, we **strongly recommend** creating **sepa
 
 ### 1. Train the MIA Projector
 
-```bash
+
 python mSMINE.py \
   --cuda_id 0 \
   --source_model CLIP_ViT-L/14 \
