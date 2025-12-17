@@ -1,5 +1,5 @@
 ````md
-<!--
+
 # MABA
 
 > **Paper:** *On Evaluating the Robustness of Large Vision-Language Models via Untargeted Modality Alignment Breaking Adversarial Attack*
@@ -25,7 +25,7 @@ This repository includes:
 The evaluation pipeline is primarily adapted from **Qwen-VL**.
 
 ---
--->
+
 
 ## ⚙️ Environment Preparation
 
@@ -51,8 +51,6 @@ To test a wide range of LVLM families, we **strongly recommend** creating **sepa
 | MiniCPM          | [https://github.com/OpenBMB/MiniCPM](https://github.com/OpenBMB/MiniCPM)                                                                           |
 | InternVL3        | [https://github.com/OpenGVLab/InternVL](https://github.com/OpenGVLab/InternVL)                                                                     |
 
-```
-```
 
 
 ## 🚀 Usage
