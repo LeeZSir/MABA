@@ -2,7 +2,7 @@
 
 # MABA
 
-> **Paper:** *On Evaluating the Robustness of Large Vision-Language Models via Untargeted Modality Alignment Breaking Adversarial Attack*
+**Paper:** *On Evaluating the Robustness of Large Vision-Language Models via Untargeted Modality Alignment Breaking Adversarial Attack*
 
 This repository contains the official implementation of **MABA**, released for the anonymous review of our **USENIX Security** submission.  
 License and authorship information will be updated upon acceptance.
