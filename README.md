@@ -1,4 +1,3 @@
-````md
 <!--
 # MABA
 
@@ -25,6 +24,7 @@ This repository includes:
 The evaluation pipeline is primarily adapted from **Qwen-VL**.
 
 ---
+-->
 
 ## ⚙️ Environment Preparation
 
@@ -32,7 +32,7 @@ The evaluation pipeline is primarily adapted from **Qwen-VL**.
 
 ```bash
 pip install -r requirements.txt
-````
+
 
 ---
 
