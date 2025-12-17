@@ -34,8 +34,6 @@ The evaluation pipeline is primarily adapted from **Qwen-VL**.
 pip install -r requirements.txt
 
 
----
-
 ### 2. Model Configuration
 
 To test a wide range of LVLM families, we **strongly recommend** creating **separate virtual environments** for different models, as they often rely on incompatible `transformers` versions.
