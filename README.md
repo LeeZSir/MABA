@@ -1,3 +1,4 @@
+````md
 <!--
 # MABA
 
@@ -32,7 +33,9 @@ The evaluation pipeline is primarily adapted from **Qwen-VL**.
 
 ```bash
 pip install -r requirements.txt
+````
 
+---
 
 ### 2. Model Configuration
 
@@ -48,7 +51,9 @@ To test a wide range of LVLM families, we **strongly recommend** creating **sepa
 | MiniCPM          | [https://github.com/OpenBMB/MiniCPM](https://github.com/OpenBMB/MiniCPM)                                                                           |
 | InternVL3        | [https://github.com/OpenGVLab/InternVL](https://github.com/OpenGVLab/InternVL)                                                                     |
 
----
+```
+```
+
 
 ## 🚀 Usage
 
