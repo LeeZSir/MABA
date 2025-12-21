@@ -20,7 +20,7 @@ class MABAttacker():
         self.txt_attacker = txt_attacker
         self.args = args
 
-    def attack(self, imgs, txts, txt2img, all_texts, device='cpu', max_length=30, scales=None, masks=None, **kwargs):
+    def attack(self, imgs, txts, txt2img,  device='cpu', max_length=30, scales=None, masks=None, **kwargs):
 
         with torch.no_grad():
             origin_img_output = self.model.inference_image(self.img_attacker.normalization(imgs))
@@ -60,7 +60,7 @@ class MABImageAttacker():
         self.sample_numbers = sample_numbers
         # mSMI
         # Load mSMI Matrix
-        self.checkpoint_X = torch.load('YOUR_SLICING_MATRIX.pt', map_location='cpu')
+        self.checkpoint_X = torch.load('./slicing_matrix/checkpoints/QformerL14-itonly-1000Samples/slicing_matrices_epoch_100.pt', map_location='cpu')
         self.sX = self.checkpoint_X['sX']
         self.sY = self.sX
         # Compute QR decomposition
@@ -504,10 +504,10 @@ filter_words = set(filter_words)
 
 
 class MABTextAttacker():
-    def __init__(self, ref_net, ref_net_d, tokenizer, cls=True, max_length=30, number_perturbation=1, topk=10,
+    def __init__(self, ref_net, tokenizer, cls=True, max_length=30, number_perturbation=1, topk=10,
                  threshold_pred_score=0.3, batch_size=32, text_ratios=[0.6, 0.2, 0.2]):
         self.ref_net = ref_net
-        self.ref_net_d = ref_net_d
+        # self.ref_net_d = ref_net_d
         self.tokenizer = tokenizer
         self.max_length = max_length
         # epsilon_txt

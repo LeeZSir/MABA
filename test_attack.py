@@ -35,7 +35,7 @@ def toImage(norm_img):
     pil_img=Image.fromarray(np.transpose(pil_array, (1, 2, 0)))
     return pil_img
 
-def adv_gen(model, ref_model, t_models, t_ref_models, t_ref_models_d, t_test_transforms, data_loader, tokenizer, t_tokenizers, device, args, config):
+def adv_gen(model, ref_model, data_loader, tokenizer, device, args):
     model.to(device)
     ref_model.to(device)
     model.float()
@@ -49,7 +49,7 @@ def adv_gen(model, ref_model, t_models, t_ref_models, t_ref_models_d, t_test_tra
         max_length = 77
     # Initialize attacker
     img_attacker = MABImageAttacker(images_normalize, eps=16/255, steps=30, step_size=3/255, args = args)
-    txt_attacker = TextAttacker(ref_model, tokenizer, cls=False, max_length=max_length, number_perturbation=1, topk=10, threshold_pred_score=0.3)
+    txt_attacker = MABTextAttacker(ref_model, tokenizer, cls=False, max_length=max_length, number_perturbation=1, topk=10, threshold_pred_score=0.3)
     attacker = MABAttacker(model, img_attacker, txt_attacker, args)
 
     print('Prepare memory')
@@ -78,30 +78,30 @@ def adv_gen(model, ref_model, t_models, t_ref_models, t_ref_models_d, t_test_tra
             txt2img += [i]*len(text_ids_groups[i])
 
         images = images.to(device)
-        adv_images, adv_texts, _ = attacker.attack(images, texts, txt2img, all_texts, device=device, max_length=max_length, scales=scales)
+        adv_images, adv_texts, _ = attacker.attack(images, texts, txt2img, device=device, max_length=max_length, scales=scales)
 
         # Save Adversarial Examples
-        # for i in range(len(images)):
-        #     original_path = image_path[i]
-        #     filename = os.path.basename(original_path) 
-        #     target_path = os.path.join(adv_output_dir, filename)
-        #     os.makedirs(os.path.dirname(target_path), exist_ok=True) 
-        #     save_image(adv_images[i], target_path)
+        for i in range(len(images)):
+            original_path = image_path[i]
+            filename = os.path.basename(original_path) 
+            target_path = os.path.join(adv_output_dir, filename)
+            os.makedirs(os.path.dirname(target_path), exist_ok=True) 
+            save_image(adv_images[i], target_path)
 
 def load_model(args,model_name,text_encoder, device):
-        tokenizer = BertTokenizer.from_pretrained(text_encoder)
-        ref_model = BertForMaskedLM.from_pretrained(text_encoder)  
-        if model_name == 'CLIP_ViT':
-            model_name = 'ViT-B/16'
-            print(model_name)
-        elif model_name == 'CLIP_ViT32':
-            model_name = 'ViT-B/32'
-        elif model_name == 'CLIP_ViT-L/14':
-            model_name = 'ViT-L/14'
-        else:
-            model_name = 'RN101'
-        model, preprocess = clip.load(model_name, device=device)
-        model.set_tokenizer(tokenizer)
+    tokenizer = BertTokenizer.from_pretrained(text_encoder)
+    ref_model = BertForMaskedLM.from_pretrained(text_encoder)  
+    if model_name == 'CLIP_ViT':
+        model_name = 'ViT-B/16'
+        print(model_name)
+    elif model_name == 'CLIP_ViT32':
+        model_name = 'ViT-B/32'
+    elif model_name == 'CLIP_ViT-L/14':
+        model_name = 'ViT-L/14'
+    else:
+        model_name = 'RN101'
+    model, preprocess = clip.load(model_name, device=device)
+    model.set_tokenizer(tokenizer)
     return model, ref_model, tokenizer
     
 
@@ -119,8 +119,8 @@ def main(args, config):
     cudnn.benchmark = True
     
     print("Creating Source Model")
-        model, ref_model, tokenizer = load_model(args,args.source_model,args.source_text_encoder, device)
-        aux_model = None #无decoder
+    model, ref_model, tokenizer = load_model(args,args.source_model,args.source_text_encoder, device)
+    aux_model = None #无decoder
 
 
     #### Dataset ####
@@ -136,7 +136,7 @@ def main(args, config):
     test_dataset = paired_dataset2(config['test_file'], s_test_transform, config['image_root'])
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
                             num_workers=4, collate_fn=test_dataset.collate_fn)
-    adv_gen(model, ref_model, tokenizer, t_models, t_ref_models, t_ref_models_d, t_tokenizers, t_test_transforms, test_loader, device, args, config)
+    adv_gen(model, ref_model, test_loader, tokenizer, device, args)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -146,7 +146,7 @@ if __name__ == '__main__':
     parser.add_argument('--cuda_id', default=0, type=int)
     parser.add_argument('--log',default=None,type=str)
     parser.add_argument('--model_list', default=['CLIP_ViT-L/14'], type=list)#,'CLIP_CNN','ALBEF','TCL','BLIP','BLIP_2'
-    parser.add_argument('--source_model', default='CLIP_ViT', type=str)
+    parser.add_argument('--source_model', default='CLIP_ViT-L/14', type=str)
     parser.add_argument('--source_text_encoder', default='./checkpoints/Bert', type=str)
     parser.add_argument('--original_rank_index_path', default='./std_eval_idx/mscoco_sub/')  
     parser.add_argument('--scales', type=str, default='0.5,0.75,1.25,1.5')

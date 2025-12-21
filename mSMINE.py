@@ -311,8 +311,8 @@ def random_swap(input_ids, tokenizer, device, swap_prob=0.6):
 
 
 def main(args, config):
-    test_mSMI(args, config)
-    exit(1)
+    # test_mSMI(args, config)
+    # exit(1)
     # set device
     torch.cuda.set_device(args.cuda_id)
     device = torch.device('cuda')
