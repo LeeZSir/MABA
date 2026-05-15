@@ -1,16 +1,13 @@
 import numpy as np
+import os
 import torch
 import torch.nn as nn
 
 import copy
 from torchvision import transforms
 from PIL import Image
-import torch.nn.functional as F
 import random
 import time
-
-from mSMINE import maxSMI,BilinearCritic
-
 
 
 class MABAttacker():
@@ -52,21 +49,43 @@ class MABAttacker():
 
 
 class MABImageAttacker():
-    def __init__(self, normalization, eps=2 / 255, steps=10, step_size=0.217 / 255, sample_numbers=5,args = None):
+    def __init__(
+        self,
+        normalization,
+        eps=2 / 255,
+        steps=10,
+        step_size=0.217 / 255,
+        sample_numbers=5,
+        args=None,
+        slicing_matrix_path=None,
+    ):
         self.normalization = normalization
         self.eps = eps
         self.steps = steps
         self.step_size = step_size
         self.sample_numbers = sample_numbers
-        # mSMI
-        # Load mSMI Matrix
-        self.checkpoint_X = torch.load('./slicing_matrix/checkpoints/QformerL14-itonly-1000Samples/slicing_matrices_epoch_100.pt', map_location='cpu')
+        self.args = args
+
+        slicing_matrix_path = (
+            slicing_matrix_path
+            or getattr(args, "slicing_matrix_path", None)
+            or os.environ.get("MABA_SLICING_MATRIX")
+        )
+        if not slicing_matrix_path:
+            raise ValueError(
+                "Missing slicing matrix checkpoint. Pass --slicing_matrix_path "
+                "or set MABA_SLICING_MATRIX."
+            )
+        slicing_matrix_path = os.path.expanduser(slicing_matrix_path)
+        if not os.path.isfile(slicing_matrix_path):
+            raise FileNotFoundError(f"Slicing matrix checkpoint not found: {slicing_matrix_path}")
+
+        self.checkpoint_X = torch.load(slicing_matrix_path, map_location='cpu')
         self.sX = self.checkpoint_X['sX']
         self.sY = self.sX
         # Compute QR decomposition
         self.Q_sX, _ = torch.linalg.qr(self.sX)
         self.Q_sY, _ = torch.linalg.qr(self.sY)
-        self.args = args
 
     def loss_func(self, adv_imgs_embeds, txts_embeds, txt2img,all_txt_supervisions):
         """    
@@ -190,19 +209,11 @@ class MABImageAttacker():
 
         b, _, _, _ = imgs.shape
 
-        if scales is None:
-            scales_num = 1
-        else:
-            scales_num = len(scales) + 1
-
         adv_imgs = imgs.detach() + torch.from_numpy(np.random.uniform(-self.eps, self.eps, imgs.shape)).float().to(
             device)
         adv_imgs = torch.clamp(adv_imgs, 0.0, 1.0)
 
         last_adv_imgs = None
-
-        start_time = time.time()
-        ratio_list = []
 
         for step in range(self.steps):  # self.steps=10
             if last_adv_imgs != None:
@@ -249,7 +260,6 @@ class MABImageAttacker():
                 #candidate_index = loss_list.index(max(loss_list))
 
                 candidate_index = loss_list.index(max(loss_list))
-                ratio_list.append(samples[candidate_index])
 
                 adv_imgs = (samples[candidate_index][0] / 100) * clone_adv_imgs + (
                             samples[candidate_index][1] / 100) * imgs + (

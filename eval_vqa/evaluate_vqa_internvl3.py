@@ -1,5 +1,32 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for InternVL.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='OpenGVLab/InternVL3-8B')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
-import itertools
 import json
 import os
 import random

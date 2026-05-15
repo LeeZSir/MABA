@@ -1,11 +1,44 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='image-captioning evaluation for LLaVA-OneVision.')
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default='lmms-lab/llava-onevision-qwen2-7b-si')
+    parser.add_argument("--cuda_visible_devices", default='auto')
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
+def _parse_runtime_args():
+    parser = _argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default="")
+    parser.add_argument("--cuda_visible_devices", default="")
+    args, _ = parser.parse_known_args()
+    return args
+
 from llava.model.builder import load_pretrained_model
-from llava.mm_utils import get_model_name_from_path, process_images, tokenizer_image_token
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
-from llava.conversation import conv_templates, SeparatorStyle
+from llava.mm_utils import process_images, tokenizer_image_token
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+from llava.conversation import conv_templates
 from torch.utils.data import DataLoader
 
 from PIL import Image
-import requests
 import copy
 import torch
 from torchvision import transforms
@@ -14,16 +47,19 @@ import os
 import sys
 import re
 import warnings
-import time
 import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
 
 from dataset import paired_dataset2
 
 warnings.filterwarnings("ignore")
-pretrained = "lmms-lab/llava-onevision-qwen2-7b-si"
+args = _parse_runtime_args()
+if not args.model_path:
+    args.model_path = "lmms-lab/llava-onevision-qwen2-7b-si"
+if args.cuda_visible_devices and args.cuda_visible_devices != "auto":
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
+pretrained = args.model_path
 model_name = "llava_qwen"
 device = "cuda"
 device_map = "auto" # 显式指定模型所有权重到 cuda:1
@@ -74,7 +110,7 @@ s_test_transform = transforms.Compose([
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AttackVLM')
 # test_dataset = paired_dataset2('./data_annotation/208589.json', s_test_transform, './adv_output/AttackVLM_00003')
 # test_dataset = paired_dataset2('./data_annotation/208589.json', s_test_transform, './adv_output/AnyAttack')
-test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/FOA')
+test_dataset = paired_dataset2(args.data_path, s_test_transform, args.image_path)
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers')
 test_loader = DataLoader(test_dataset, batch_size=1,
                         num_workers=4, collate_fn=test_dataset.collate_fn)
@@ -83,7 +119,7 @@ reference_dict = {}
 
 # 创建带时间戳的目录
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-save_dir = os.path.join('./caption_outputs', timestamp)
+save_dir = os.path.join(args.output_dir, timestamp)
 os.makedirs(save_dir, exist_ok=True)
 
 # 定义文件路径
@@ -97,7 +133,7 @@ for batch in tqdm(test_loader, desc="Evaluating"):
     
     for i in range(images.size(0)):
         # [原有处理逻辑保持不变]
-        image = Image.open(os.path.join('./adv_output/FOA',image_paths[i]))
+        image = Image.open(os.path.join(args.image_path, image_paths[i]))
         image_tensor = process_images([image], image_processor, model.config)
         image_tensor = [_image.to(dtype=torch.float16, device=device) for _image in image_tensor]
         conv_template = "qwen_2"  # Make sure you use correct chat template for different models

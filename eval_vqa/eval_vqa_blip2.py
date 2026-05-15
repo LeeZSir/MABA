@@ -1,51 +1,41 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for BLIP-2.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='blip2_opt/pretrain_opt6.7b')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
 import os
-import re
-import random
-# import gradio as gr
-from ruamel.yaml import YAML
-
-yaml=YAML(typ='safe')
-import numpy as np
 import random
 import time
-import datetime
 import json
-from pathlib import Path
 
 import torch
-import torch.backends.cudnn as cudnn
-from torch.utils.data import DataLoader,Subset
-
-from transformers import BertForMaskedLM
-from torchvision import transforms
 from PIL import Image
-from transformers import StoppingCriteriaList
-
-from models.vit import interpolate_pos_embed
-from models.tokenization_bert import BertTokenizer
-from models import clip
-from models.blip_model.blip_retrieval import blip_retrieval
-# BLIP-2
 from lavis.models import load_model_and_preprocess
-from lavis.processors import load_processor
-
-import utils
-import copy
-import time
-
-
-from dataset import paired_dataset2
-
-from PIL import Image
 from tqdm import tqdm
-from torch.utils.data import DataLoader
-
-
-import tempfile
-
-import json
-import os
 
 ds_collections = {
     'vqav2_val': {
@@ -113,6 +103,8 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--image_root', type=str, default='./adv_output/FOA/val2014')
+    parser.add_argument('--out_dir', type=str, default='./vqa_outputs')
     args = parser.parse_args()
     device = torch.device('cuda:1')
     model, vis_processors, _ = load_model_and_preprocess(
@@ -149,7 +141,7 @@ if __name__ == '__main__':
             # prefix_path = "./datasets_own/MSCOCO/val2014"
             # prefix_path = "./adv_output/AttackVLM/val2014"
             # prefix_path = "./adv_output/AnyAttack/val2014"
-            prefix_path = "./adv_output/FOA/val2014"
+            prefix_path = args.image_root
             # prefix_path = "./adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers/val2014"
             # 提取文件名
             filename = os.path.basename(image_path)
@@ -203,7 +195,7 @@ if __name__ == '__main__':
     merged_outputs = outputs
     print(f"Evaluating {args.dataset} ...")
     time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
-    output_dir = './vqa_outputs'
+    output_dir = args.out_dir
     os.makedirs(output_dir, exist_ok=True)  # 确保目录存在
 
     results_file = os.path.join(

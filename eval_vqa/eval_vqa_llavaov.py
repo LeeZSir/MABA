@@ -1,3 +1,31 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for LLaVA-OneVision.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='lmms-lab/llava-onevision-qwen2-7b-si')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
 import torch
 import os
@@ -7,34 +35,18 @@ import shortuuid
 import copy
 import math
 import random
-import sys
-import warnings
 import time
-import datetime
-from pathlib import Path
-import argparse
-import numpy as np
 
-from torchvision import transforms
-from torchvision.utils import save_image
-import torchvision.transforms as T
 from PIL import Image
 
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, IGNORE_INDEX
 from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
-from llava.utils import disable_torch_init
-from llava.mm_utils import tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria, process_images
+from llava.mm_utils import tokenizer_image_token, process_images
 
-from llava.constants import IGNORE_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IMAGE_TOKEN_INDEX
-from typing import Dict, Optional, Sequence, List
+from typing import Dict
 import transformers
 import re
-
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.transforms.functional import InterpolationMode
-from transformers import AutoModel, AutoTokenizer
 
 
 
@@ -109,8 +121,6 @@ def preprocess_qwen(sources, tokenizer: transformers.PreTrainedTokenizer, has_im
     im_start, im_end = tokenizer.additional_special_tokens_ids
     nl_tokens = tokenizer("\n").input_ids
     _system = tokenizer("system").input_ids + nl_tokens
-    _user = tokenizer("user").input_ids + nl_tokens
-    _assistant = tokenizer("assistant").input_ids + nl_tokens
 
     # Apply prompt templates
     input_ids, targets = [], []
@@ -180,10 +190,8 @@ def eval_model(args):
         conv = conv_templates[args.conv_mode].copy()
         conv.append_message(conv.roles[0], qs)
         conv.append_message(conv.roles[1], None)
-        prompt = conv.get_prompt()
 
         input_ids = preprocess_qwen([line["conversations"][0],{'from': 'gpt','value': None}], tokenizer, has_image=True).cuda()
-        img_num = list(input_ids.squeeze()).count(IMAGE_TOKEN_INDEX)
 
         image_tensors = []
         for image_file in image_files:
@@ -193,8 +201,6 @@ def eval_model(args):
         # image_tensors = torch.cat(image_tensors, dim=0)
 
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-        keywords = [stop_str]
-        stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
 
         with torch.inference_mode():
             output_ids = model.generate(
@@ -242,15 +248,11 @@ def eval_model(args):
                 conv = conv_templates[args.conv_mode].copy()
                 conv.append_message(conv.roles[0], qs)
                 conv.append_message(conv.roles[1], None)
-                prompt = conv.get_prompt()
 
                 input_ids_new = preprocess_qwen([line["conversations"][i],{'from': 'gpt','value': None}], tokenizer, has_image=True).cuda()
                 input_ids = torch.cat((input_ids, input_ids_new), dim=1)
-                img_num = list(input_ids_new.squeeze()).count(IMAGE_TOKEN_INDEX)
 
                 stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-                keywords = [stop_str]
-                stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
 
                 with torch.inference_mode():
                     output_ids = model.generate(
@@ -296,10 +298,13 @@ if __name__ == "__main__":
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--image_root', type=str, default='./adv_output/FOA/val2014')
+    parser.add_argument('--out_dir', type=str, default='./vqa_outputs')
+    parser.add_argument('--cuda_visible_devices', type=str, default='')
     args = parser.parse_args()
 
     # Model
-    pretrained = "lmms-lab/llava-onevision-qwen2-7b-si"
+    pretrained = args.model_path
     model_name = "llava_qwen"
     device = "cuda"
     device_map = "auto" # 显式指定模型所有权重到 cuda:1
@@ -337,7 +342,7 @@ if __name__ == "__main__":
             # prefix_path = "./datasets_own/MSCOCO/val2014"
             # prefix_path = "./adv_output/AttackVLM/val2014"
             # prefix_path = "./adv_output/AnyAttack/val2014"
-            prefix_path = "./adv_output/FOA/val2014"
+            prefix_path = args.image_root
             # prefix_path = "./adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers/val2014"
 
             # 提取文件名
@@ -410,11 +415,10 @@ if __name__ == "__main__":
     merged_outputs = outputs
     print(f"Evaluating {args.dataset} ...")
     time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
-    output_dir = './vqa_outputs'
+    output_dir = args.out_dir
     os.makedirs(output_dir, exist_ok=True)  # 确保目录存在
     results_file = os.path.join(
         output_dir,
         f'{args.dataset}_{time_prefix}_fs{args.few_shot}_s{args.seed}.json'
     )
     json.dump(merged_outputs, open(results_file, 'w'), ensure_ascii=False)
-

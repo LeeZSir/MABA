@@ -1,56 +1,52 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='image-captioning evaluation for BLIP-2.')
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default='blip2_opt/caption_coco_opt6.7b')
+    parser.add_argument("--cuda_visible_devices", default='1')
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
 import os
 import re
 import random
-# import gradio as gr
 from ruamel.yaml import YAML
 
 yaml=YAML(typ='safe')
 import numpy as np
-import random
-import time
 import datetime
 import json
-from pathlib import Path
 
 import torch
 import torch.backends.cudnn as cudnn
-from torch.utils.data import DataLoader,Subset
+from torch.utils.data import DataLoader
 
-from transformers import BertForMaskedLM
-from torchvision import transforms
-from PIL import Image
-from transformers import StoppingCriteriaList
-
-from models.vit import interpolate_pos_embed
-from models.tokenization_bert import BertTokenizer
-from models import clip
-from models.blip_model.blip_retrieval import blip_retrieval
-# BLIP-2
 from lavis.models import load_model_and_preprocess
-from lavis.processors import load_processor
 
 import utils
-import copy
-import time
-
-from SA_AET import Attacker, ImageAttacker, TextAttacker
-from TYA import TAttacker, TImageAttacker, TTextAttacker
-from TYA_FC import TFCAttacker, TFCImageAttacker, TFCTextAttacker
-from SGAttacker import SGAttacker, SImageAttacker, STextAttacker
-from SGAttacker_FC import FCSGAttacker, FCSImageAttacker, FCSTextAttacker
 from dataset import paired_dataset2
 
-from PIL import Image
 from tqdm import tqdm
-from torch.utils.data import DataLoader
 
 from pycocoevalcap.eval import COCOEvalCap
 from pycocotools.coco import COCO
-import tempfile
 
-import json
-import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 @torch.no_grad()
 def evaluate_caption_model(model, test_loader, device, output_dir="./caption_outputs/"):
@@ -176,7 +172,7 @@ def main(args, config):
                             num_workers=4, collate_fn=test_dataset.collate_fn)
 
 
-    metrics = evaluate_caption_model(model, test_loader, device)
+    evaluate_caption_model(model, test_loader, device)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -190,4 +186,3 @@ if __name__ == '__main__':
 
     config = yaml.load(open(args.config, 'r'))
     main(args, config)   
-

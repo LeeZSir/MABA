@@ -1,21 +1,35 @@
 import argparse
 import os
+import sys
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="Train the MABA slicing matrix projector.")
+    parser.add_argument('--config', default='./configs/Retrieval_coco.yaml')
+    parser.add_argument('--seed', default=42, type=int)
+    parser.add_argument('--batch_size', default=50, type=int)
+    parser.add_argument('--cuda_id', default=0, type=int)
+    parser.add_argument('--log', default='default', type=str)
+    parser.add_argument('--output_dir', default='./slicing_matrix/checkpoints', type=str)
+    parser.add_argument('--source_model', default='CLIP_ViT', type=str)
+    parser.add_argument('--source_text_encoder', default='bert-base-uncased', type=str)
+    parser.add_argument('--scales', type=str, default=' 0.5, 0.75, 1.25, 1.5')
+    parser.add_argument('--lr', type=float, default=2e-4)
+    return parser
+
+
+if __name__ == '__main__' and any(arg in ('-h', '--help') for arg in sys.argv[1:]):
+    build_parser().print_help()
+    raise SystemExit(0)
+
 import random
 import time
 import numpy as np
-import sys
 import math
 from PIL import Image
 import torch.nn as nn
-from torchvision.utils import save_image
-from typing import Dict, List, Tuple, Optional, Set, Union, Sequence
+from typing import Dict, Optional
 
-import torch.nn.functional as F
-from torch import Tensor
-from torchvision.transforms import functional as _F
-from torchvision.transforms import InterpolationMode
-import numbers
-import warnings
 from ruamel.yaml import YAML
 yaml=YAML(typ='safe')
 
@@ -24,8 +38,6 @@ import torch.backends.cudnn as cudnn
 from torchvision import transforms
 from torch.utils.data import DataLoader
 
-from models.model_retrieval import ALBEF
-from models.vit import interpolate_pos_embed
 from models.tokenization_bert import BertTokenizer
 from models import clip
 from transformers import BertForMaskedLM
@@ -203,14 +215,6 @@ def get_scaled_imgs(imgs, scales=None, adv_imgs = None, device='cuda'):
         value= 0 ,     # 用随机值填充擦除区域
         inplace= False       # 返回新的张量
     )
-    Mask_transform = Random_Mask_Image(
-        size=16,                  # 16x16的掩码块
-        ratio=0.3,                # 40%覆盖率
-        p=1,                    # 80%概率应用
-        interpolation=InterpolationMode.BILINEAR,  # 预留插值模式
-        inplace=False             # 安全模式（默认）
-    )
-    Rotation_transform = transforms. RandomRotation(30)
     scaled_imgs_list = []  # 用于存放每个缩放比例生成的图像版本
     for ratio in scales:
         # 根据缩放因子计算新的尺寸
@@ -354,7 +358,7 @@ def main(args, config):
     ])
     # Log_setting
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    save_dir = os.path.join("./slicing_matrix/checkpoints", timestamp,args.log)
+    save_dir = os.path.join(args.output_dir, timestamp, args.log)
     os.makedirs(save_dir, exist_ok=True)  
 
     # load dataset
@@ -405,7 +409,6 @@ def main(args, config):
             txt2img = []
             texts_ids = []
             texts = []
-            all_text_ids = set(range(len(s_feat_dict['s_text_feats'])))  # 所有文本 ID
             negative_texts_ids = []
             for i in range(len(texts_group)):
                 texts += texts_group[i]
@@ -432,7 +435,6 @@ def main(args, config):
                 norm_scaled_imgs = torch.stack(norm_scaled_imgs,dim=0)
                 # 处理缩放图像
                 s_norm_output_img = []
-                s_output_text = []
                 max_length = 30 if args.source_model in ['ALBEF', 'TCL'] else 77
                 # 遮挡文本
                 texts_input = tokenizer(texts, padding='max_length', truncation=True, max_length=max_length, 
@@ -532,24 +534,22 @@ def main(args, config):
 
 
 
+def load_config(config_path):
+    config_path = os.path.expanduser(config_path)
+    if not os.path.isfile(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.load(f)
+    for key in ("test_file", "image_root"):
+        if key not in config:
+            raise KeyError(f"Missing required config key: {key}")
+    return config
+
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/Retrieval_coco.yaml')
-    parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--batch_size', default=50, type=int)
-    parser.add_argument('--cuda_id', default=0, type=int)
-    parser.add_argument('--log', default=None, type = str)
-
-    parser.add_argument('--source_model', default='CLIP_ViT', type=str)
-    parser.add_argument('--source_text_encoder', default='./checkpoints/Bert', type=str)   
-    parser.add_argument('--target_text_encoder', default='./checkpoints/Bert', type=str)
- 
-    parser.add_argument('--original_rank_index_path', default='./std_eval_idx/mscoco_sub')  
-    parser.add_argument('--scales', type=str, default=' 0.5, 0.75, 1.25, 1.5')#
-
-    parser.add_argument('--lr',type=float, default=2e-4)
+    parser = build_parser()
     args = parser.parse_args()
 
-    config = yaml.load(open(args.config, 'r'))
+    config = load_config(args.config)
 
     main(args, config)

@@ -1,21 +1,47 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='image-captioning evaluation for Qwen2.5-VL.')
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default='Qwen/Qwen2.5-VL-7B-Instruct')
+    parser.add_argument("--cuda_visible_devices", default='0,1,2')
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
+def _parse_runtime_args():
+    parser = _argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default="")
+    parser.add_argument("--cuda_visible_devices", default="")
+    args, _ = parser.parse_known_args()
+    return args
+
 import os
 import sys
 import re
-import warnings
-import time
 import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
-import math
-import numpy as np
-import torch
-import torchvision.transforms as T
 from PIL import Image
 
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.transforms.functional import InterpolationMode
 
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from qwen_vl_utils import process_vision_info
@@ -24,7 +50,12 @@ from qwen_vl_utils import process_vision_info
 
 
 from dataset import paired_dataset2
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
+args = _parse_runtime_args()
+if not args.model_path:
+    args.model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
+if not args.cuda_visible_devices:
+    args.cuda_visible_devices = "0,1,2"
+os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
 device = 'cuda'
 # default: Load the model on the available device(s)
 # model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -37,7 +68,7 @@ quant_config = BitsAndBytesConfig(
 )
 
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    "Qwen/Qwen2.5-VL-7B-Instruct",
+    args.model_path,
     torch_dtype="auto",
     # quantization_config=quant_config,
     attn_implementation="sdpa",
@@ -53,7 +84,7 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
 # )
 
 # default processor
-processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+processor = AutoProcessor.from_pretrained(args.model_path)
 
 
 s_test_transform = transforms.Compose([
@@ -64,7 +95,7 @@ s_test_transform = transforms.Compose([
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './datasets_own/MSCOCO')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AttackVLM')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AnyAttack')
-test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/FOA')
+test_dataset = paired_dataset2(args.data_path, s_test_transform, args.image_path)
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/MIA')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/FS')
@@ -76,7 +107,7 @@ reference_dict = {}
 
 # 创建带时间戳的目录
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-save_dir = os.path.join('./caption_outputs', timestamp)
+save_dir = os.path.join(args.output_dir, timestamp)
 os.makedirs(save_dir, exist_ok=True)
 
 # 定义文件路径
@@ -95,7 +126,7 @@ for batch in tqdm(test_loader, desc="Evaluating"):
                 "content": [
                     {
                         "type": "image",
-                        "image": os.path.join('./adv_output/FOA',image_paths[i]),
+                        "image": os.path.join(args.image_path, image_paths[i]),
                     },
                     {"type": "text", "text": "You are doing the image captioning task. Describe this image in one short sentence only."},
                 ],

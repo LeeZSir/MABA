@@ -1,14 +1,44 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='image-captioning evaluation for Phi-4 multimodal.')
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default='microsoft/Phi-4-multimodal-instruct')
+    parser.add_argument("--cuda_visible_devices", default='1')
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
+def _parse_runtime_args():
+    parser = _argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default="")
+    parser.add_argument("--cuda_visible_devices", default="")
+    args, _ = parser.parse_known_args()
+    return args
+
 import os
 import sys
 import re
-import warnings
-import time
 import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
 
-import requests
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -17,11 +47,16 @@ from transformers import AutoModelForCausalLM, AutoProcessor, GenerationConfig
 
 from dataset import paired_dataset2
 # Set device to GPU 1
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+args = _parse_runtime_args()
+if not args.model_path:
+    args.model_path = "microsoft/Phi-4-multimodal-instruct"
+if not args.cuda_visible_devices:
+    args.cuda_visible_devices = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define model path
-model_path = "microsoft/Phi-4-multimodal-instruct"
+model_path = args.model_path
 
 # Load processor
 processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
@@ -47,7 +82,7 @@ s_test_transform = transforms.Compose([
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './datasets_own/MSCOCO')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AttackVLM')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AnyAttack')
-test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/FOA')
+test_dataset = paired_dataset2(args.data_path, s_test_transform, args.image_path)
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers')
 test_loader = DataLoader(test_dataset, batch_size=1,
                         num_workers=4, collate_fn=test_dataset.collate_fn)
@@ -56,7 +91,7 @@ reference_dict = {}
 
 # 创建带时间戳的目录
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-save_dir = os.path.join('./caption_outputs', timestamp)
+save_dir = os.path.join(args.output_dir, timestamp)
 os.makedirs(save_dir, exist_ok=True)
 
 # 定义文件路径
@@ -76,7 +111,7 @@ for batch in tqdm(test_loader, desc="Evaluating"):
         print("\n--- IMAGE PROCESSING ---")
         prompt = f'{user_prompt}You are doing the image captioning task. Describe this <|image_1|> in one short sentence only. {prompt_suffix}{assistant_prompt}'
         # Load image
-        image = Image.open(os.path.join('./adv_output/FOA',image_paths[i])).convert('RGB')
+        image = Image.open(os.path.join(args.image_path, image_paths[i])).convert('RGB')
         # Process inputs and move to device
         inputs = processor(text=prompt, images=image, return_tensors='pt').to(device)
         # Generate output
@@ -139,5 +174,3 @@ for image_id, captions in reference_dict.items():
 
 with open(clean_json_path, 'w') as f:
     json.dump(ref_data, f, indent=2)
-
-

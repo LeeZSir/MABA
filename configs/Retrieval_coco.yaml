@@ -1,0 +1,4 @@
+test_file: ./data_annotation/coco_test_sub.json
+image_root: ./datasets_own/MSCOCO
+embed_dim: 256
+num_epochs: 100

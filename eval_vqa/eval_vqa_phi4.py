@@ -1,35 +1,42 @@
-import math
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for Phi-4 multimodal.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='microsoft/Phi-4-multimodal-instruct')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
-import warnings
 import time
-import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
 
-import requests
 import torch
-from torch.utils.data import DataLoader
-from torchvision import transforms
 from PIL import Image
 from transformers import AutoModelForCausalLM, AutoProcessor, GenerationConfig
 
 import random
 import os
-import sys
-import re
-import warnings
-import time
-import datetime
-import json
-from pathlib import Path
-from tqdm import tqdm
-
-import requests
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from PIL import Image
-from transformers import AutoModelForCausalLM, AutoProcessor, GenerationConfig
 
 ds_collections = {
     'vqav2_val': {
@@ -102,14 +109,18 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--image_root', type=str, default='./adv_output/FOA/val2014')
+    parser.add_argument('--out_dir', type=str, default='./vqa_outputs')
+    parser.add_argument('--model_path', type=str, default='microsoft/Phi-4-multimodal-instruct')
+    parser.add_argument('--cuda_visible_devices', type=str, default='1')
     args = parser.parse_args()
 
     # Set device to GPU 1
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Define model path
-    model_path = "microsoft/Phi-4-multimodal-instruct"
+    model_path = args.model_path
 
     # Load processor
     processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
@@ -163,7 +174,7 @@ if __name__ == '__main__':
             # prefix_path = "./datasets_own/MSCOCO/val2014"
             # prefix_path = "./adv_output/AttackVLM/val2014"
             # prefix_path = "./adv_output/AnyAttack/val2014"
-            prefix_path = "./adv_output/FOA/val2014"
+            prefix_path = args.image_root
             # prefix_path = "./adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers/val2014"
             # 提取文件名
             filename = os.path.basename(image_path)
@@ -229,7 +240,7 @@ if __name__ == '__main__':
     merged_outputs = outputs
     print(f"Evaluating {args.dataset} ...")
     time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
-    output_dir = './vqa_outputs'
+    output_dir = args.out_dir
     os.makedirs(output_dir, exist_ok=True)  # 确保目录存在
 
     results_file = os.path.join(

@@ -1,8 +1,40 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='image-captioning evaluation for InternVL.')
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default='OpenGVLab/InternVL3-8B')
+    parser.add_argument("--cuda_visible_devices", default='0,1,2')
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
+def _parse_runtime_args():
+    parser = _argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default="")
+    parser.add_argument("--cuda_visible_devices", default="")
+    args, _ = parser.parse_known_args()
+    return args
+
 import math
-import numpy as np
 import torch
 import torchvision.transforms as T
-from decord import VideoReader, cpu
 from PIL import Image
 
 from torch.utils.data import DataLoader
@@ -13,18 +45,20 @@ from transformers import AutoModel, AutoTokenizer, AutoConfig
 import os
 import sys
 import re
-import warnings
-import time
 import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
 
 from dataset import paired_dataset2
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
+args = _parse_runtime_args()
+if not args.model_path:
+    args.model_path = "OpenGVLab/InternVL3-8B"
+if not args.cuda_visible_devices:
+    args.cuda_visible_devices = "0,1,2"
+os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
 device = 'cuda'
 
 def build_transform(input_size):
@@ -124,8 +158,8 @@ def split_model(model_name):
 
     return device_map
 
-path = "OpenGVLab/InternVL3-8B"
-device_map = split_model("OpenGVLab/InternVL3-8B")
+path = args.model_path
+device_map = split_model(args.model_path)
 model = AutoModel.from_pretrained(
     path,
     torch_dtype=torch.bfloat16,
@@ -146,7 +180,7 @@ s_test_transform = transforms.Compose([
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './datasets_own/MSCOCO')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AttackVLM')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/AnyAttack')
-test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/FOA')
+test_dataset = paired_dataset2(args.data_path, s_test_transform, args.image_path)
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/noise_base_test')
 # test_dataset = paired_dataset2('./data_annotation/coco_test_sub.json', s_test_transform, './adv_output/noise_TYAFC')
@@ -162,7 +196,7 @@ reference_dict = {}
 
 # 创建带时间戳的目录
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-save_dir = os.path.join('./caption_outputs', timestamp)
+save_dir = os.path.join(args.output_dir, timestamp)
 os.makedirs(save_dir, exist_ok=True)
 
 # 定义文件路径
@@ -176,7 +210,7 @@ for batch in tqdm(test_loader, desc="Evaluating"):
     
     for i in range(images.size(0)):
         # set the max number of tiles in `max_num`
-        pixel_values = load_image(os.path.join('./adv_output/FOA',image_paths[i]), max_num=12).to(torch.bfloat16).to(model.device)
+        pixel_values = load_image(os.path.join(args.image_path, image_paths[i]), max_num=12).to(torch.bfloat16).to(model.device)
         generation_config = dict(max_new_tokens=1024, do_sample=True)
 
         # single-image single-round conversation (单图单轮对话)

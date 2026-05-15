@@ -1,5 +1,3 @@
-import numpy as np
-import io
 import os
 import time
 from collections import defaultdict, deque

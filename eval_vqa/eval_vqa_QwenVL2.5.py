@@ -1,15 +1,41 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for Qwen2.5-VL.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='Qwen/Qwen2.5-VL-7B-Instruct')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
-import itertools
 import json
 import os
 import random
 import time
-from functools import partial
 from typing import Optional
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from qwen_vl_utils import process_vision_info
 from vqa import VQA
 from vqa_eval import VQAEval
@@ -189,10 +215,6 @@ def evaluate_exact_match_accuracy(entries):
 #     input_ids = tokenizer(questions, return_tensors='pt', padding='longest')
 
 #     return question_ids, input_ids.input_ids, input_ids.attention_mask, annotations
-import json
-import random
-import os
-import torch
 
 class VQADataset(torch.utils.data.Dataset):
 
@@ -271,111 +293,24 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', type=str, default='')
-    parser.add_argument('--dataset', type=str, default='')
+    parser.add_argument('--dataset', type=str, default='vqav2_val')
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--image_root', type=str, default='./adv_output/FOA/val2014')
+    parser.add_argument('--out_dir', type=str, default='./vqa_outputs')
+    parser.add_argument('--model_path', type=str, default='Qwen/Qwen2.5-VL-7B-Instruct')
+    parser.add_argument('--cuda_visible_devices', type=str, default='0')
     args = parser.parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    # torch.distributed.init_process_group(
-    #     backend='nccl',
-    #     world_size=int(os.getenv('WORLD_SIZE', '1')),
-    #     rank=int(os.getenv('RANK', '0')),
-    # )
-
-    # torch.cuda.set_device(int(os.getenv('LOCAL_RANK', 0)))
-
-    # vqa = VQA(ds_collections[args.dataset]['annotation'],
-    #             ds_collections[args.dataset]['question'])
-    # resFile = './vqa_outputs/InternVL3-8B-AttackVLM-Newprompt.json'
-    # results = vqa.loadRes(
-    #     resFile=resFile,
-    #     quesFile=ds_collections[args.dataset]['question'])
-    # vqa_scorer = VQAEval(vqa, results, n=2)
-    # vqa_scorer.evaluate()
-
-    # # print(vqa_scorer.accuracy)
-    # # # exit(1)
-    # # # 原始评估结果
-    # acc = vqa_scorer.accuracy  # 或者你可以直接赋值 acc = {...} 用于调试
-    # # 提取 perQuestionType 部分并排序
-    # pq_type = acc.get("perQuestionType", {})
-    # sorted_pq = sorted(pq_type.items(), key=lambda x: x[1], reverse=True)
-    # # 取前5名和后5名
-    # top5 = sorted_pq[:5]
-    # bottom5 = sorted_pq[-5:]
-    # # 构造新的结果字典
-    # result_with_detail = {
-    #     "full_accuracy": acc,
-    #     "top_5_question_types": [{"type": k, "score": v} for k, v in top5],
-    #     "bottom_5_question_types": [{"type": k, "score": v} for k, v in bottom5],
-    # }
-    # # 生成输出路径
-    # input_path = resFile
-    # base, ext = os.path.splitext(input_path)
-    # output_path = base + "-Detail" + ext
-    # # 保存为 JSON 文件
-    # with open(output_path, 'w') as f:
-    #     json.dump(result_with_detail, f, indent=2)
-    # exit(1)
-    # from transformers import BitsAndBytesConfig
-
-    # quant_config = BitsAndBytesConfig(
-    #     load_in_8bit=True
-    # )
-
-    # model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    #     "Qwen/Qwen2.5-VL-7B-Instruct",
-    #     # quantization_config=quant_config, 
-    #     attn_implementation="sdpa", 
-    #     torch_dtype="auto", 
-    #     device_map="auto"
-    # )
-    # # default processor
-    # processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
-
-    # print(f"保存成功: {output_path}")
-    # 测算分type结果
-    # 你手动提供的5个JSON路径
-    json_files = [
-        './vqa_outputs/InternVL3-8B-AttackVLM-Newprompt-Detail.json',
-        './vqa_outputs/LLAVAOVsi-7B-AttackVLM-Detail.json',
-        './vqa_outputs/MiniCPMo2.6-AttackVLM-Detail.json',
-        './vqa_outputs/Phi4Multimodal-AttackVLM-Detail.json',
-        './vqa_outputs/QwenVL2.5-7B-AttackVLM-Detail.json',
-    ]
-
-    # 累加器和计数器
-    total_scores = {'yes/no': 0.0, 'number': 0.0, 'other': 0.0}
-    counts = {'yes/no': 0, 'number': 0, 'other': 0}
-
-    for path in json_files:
-        try:
-            with open(path, 'r') as f:
-                data = json.load(f)
-            
-            answer_type = data['full_accuracy']['perAnswerType']
-
-            for key in ['yes/no', 'number', 'other']:
-                if key in answer_type:
-                    total_scores[key] += answer_type[key]
-                    counts[key] += 1
-                else:
-                    print(f"[警告] {path} 缺少字段 {key}")
-
-        except Exception as e:
-            print(f"[错误] 处理 {path} 时出错: {e}")
-
-    # 打印最终平均值
-    print("\n=== Answer Type 平均准确率 ===")
-    for key in ['yes/no', 'number', 'other']:
-        if counts[key] > 0:
-            avg = total_scores[key] / counts[key]
-            print(f"{key:<7}: {avg:.2f}")
-        else:
-            print(f"{key:<7}: 无数据")
-    exit(1)
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        args.model_path,
+        attn_implementation="sdpa",
+        torch_dtype="auto",
+        device_map="auto",
+    )
+    processor = AutoProcessor.from_pretrained(args.model_path)
 
     prompt = '<img>{}</img>{} Answer:'
 
@@ -412,7 +347,7 @@ if __name__ == '__main__':
             # prefix_path = "./adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers/val2014"
             # prefix_path = "./adv_output/MIA/val2014"
             # prefix_path = "./adv_output/FS/val2014"
-            prefix_path = "./adv_output/TYAFC/val2014"
+            prefix_path = args.image_root
             # 提取文件名
             filename = os.path.basename(image_path)
             # 拼接新路径
@@ -504,7 +439,7 @@ if __name__ == '__main__':
     if True:
         print(f"Evaluating {args.dataset} ...")
         time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
-        output_dir = './vqa_outputs'
+        output_dir = args.out_dir
         os.makedirs(output_dir, exist_ok=True)  # 确保目录存在
 
         results_file = os.path.join(

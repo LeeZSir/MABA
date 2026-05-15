@@ -1,3 +1,27 @@
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='image-captioning evaluation for MiniGPT-4.')
+    parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--image_path", default="./adv_output/FOA")
+    parser.add_argument("--output_dir", default="./caption_outputs")
+    parser.add_argument("--model_path", default='./configs/minigpt4_eval.yaml')
+    parser.add_argument("--cuda_visible_devices", default='0')
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
 import os
 import random
@@ -127,7 +151,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     print("output_path:", args.output_path)
-    print(f"Loading MiniGPT-4 models..")
+    print("Loading MiniGPT-4 models..")
     cfg = Config(args)
     if args.llama_path:
         cfg.config["model"]["llama_model"]=args.llama_path
@@ -135,7 +159,7 @@ if __name__ == "__main__":
         cfg.config["model"]["ckpt"]=args.ckpt_path
 
     chat, CONV_VISION=initialize_model(cfg)
-    print(f"Done")
+    print("Done")
 
     with open(args.data_path,"r",encoding="utf-8") as f:
         data = json.load(f)

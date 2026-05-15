@@ -10,6 +10,7 @@
 
 # Modified from github.com/openai/CLIP
 from collections import OrderedDict
+import os
 
 import timm
 from torch import nn
@@ -217,19 +218,13 @@ def ULIP_PointBERT(ulip_v=2):
                             context_length=77, vocab_size=49408,
                             transformer_width=512, transformer_heads=8, transformer_layers=transformer_layers, pc_feat_dims=pc_feat_dims)
                             
-    ## TODO: setup config
-    if ulip_v == 2:
-        cached_file = '/path/to/ULIP-2_pointbert_last.pt'
-    elif ulip_v == 1:
-        cached_file = '/path/to/ULIP-1_pointbert_last.pt'
-    elif ulip_v == 'shapenet':
-        cached_file = '/path/to/ULIP-1_shapenet_checkpoint_last.pt'
-    elif ulip_v == 'objaverse_k_1':
-        cached_file = '/path/to/ULIP-2_objaverse_k_1_checkpoint_last.pt'
-    elif ulip_v == 'objaverse_shapenet_k_1':
-        cached_file = '/path/to/ULIP-2_objaverse_shapenet_k_1_checkpoint_last.pt'
-    elif ulip_v == "ulip2_scaledup":
-        cached_file = "/path/to/ULIP-2_scaled_up_checkpoint_last.pt"
+    variant = str(ulip_v).upper().replace("-", "_")
+    cached_file = os.environ.get(f"ULIP_CHECKPOINT_{variant}") or os.environ.get("ULIP_CHECKPOINT_PATH")
+    if not cached_file:
+        raise FileNotFoundError(
+            "Set ULIP_CHECKPOINT_PATH or a variant-specific ULIP_CHECKPOINT_<VARIANT> "
+            f"environment variable before loading ULIP checkpoint variant {ulip_v!r}."
+        )
     # url = "https://storage.cloud.google.com/sfr-ulip-code-release-research/pretrained_models/ckpt_zero-sho_classification/checkpoint_pointbert.pt"
     # cached_file = download_cached_file(
     #     url, check_hash=False, progress=True

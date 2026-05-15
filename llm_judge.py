@@ -3,19 +3,39 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import time
-import xml.etree.ElementTree as ET
 from http import HTTPStatus
 from io import BytesIO
 from typing import Dict, List
 import argparse
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Evaluate caption or VQA outputs with an LLM judge.")
+    parser.add_argument("--ref", type=str, default="./data_annotation/coco_test_sub.json")
+    parser.add_argument("--gen", type=str, help="Path to generated captions JSON")
+    parser.add_argument("--img_path", type=str, help="Image root for multimodal caption evaluation")
+    parser.add_argument("--inspect", action="store_true", help="Only inspect message structure")
+    parser.add_argument("--multimodal", action="store_true", help="Multimodal input")
+    parser.add_argument("--vqa", action="store_true", help="VQA")
+    parser.add_argument("--ref_answer", type=str, default="./data_annotation/vqav2/v2_mscoco_val2014_annotations_subset.json")
+    parser.add_argument("--ref_question", type=str, default="./data_annotation/vqav2/v2_OpenEnded_mscoco_val2014_questions_subset.json")
+    parser.add_argument("--gen_answer", type=str, help="Path to generated VQA answers JSON")
+    parser.add_argument("--model", type=str, default="gpt-4o", help="LLM judge model name")
+    return parser
+
+
+if __name__ == "__main__" and any(arg in ("-h", "--help") for arg in sys.argv[1:]):
+    build_parser().print_help()
+    raise SystemExit(0)
+
 import backoff
 import dashscope
 import google.generativeai as genai
 import openai
 import requests
-import tiktoken
 from PIL import Image
 from google.api_core.exceptions import InvalidArgument, ResourceExhausted, InternalServerError, BadRequest
 from groq import Groq
@@ -35,7 +55,35 @@ value_ns_ubuntu = "https://accessibility.ubuntu.example.org/ns/value"
 value_ns_windows = "https://accessibility.windows.example.org/ns/value"
 class_ns_windows = "https://accessibility.windows.example.org/ns/class"
 # More namespaces defined in OSWorld, please check desktop_env/server/main.py
-import json
+
+
+def require_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Please set the {name} environment variable")
+    return value
+
+
+def encoded_img_to_pil_img(image_url: str) -> Image.Image:
+    if image_url.startswith("data:image/"):
+        _, encoded = image_url.split(",", 1)
+        return Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+    if image_url.startswith("file://"):
+        image_url = image_url[len("file://"):]
+    image_path = os.path.expanduser(image_url)
+    if os.path.isfile(image_path):
+        return Image.open(image_path).convert("RGB")
+    response = requests.get(image_url, timeout=30)
+    response.raise_for_status()
+    return Image.open(BytesIO(response.content)).convert("RGB")
+
+
+def save_to_tmp_img_file(image_url: str) -> str:
+    image = encoded_img_to_pil_img(image_url)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
+        image.save(f, format="PNG")
+        return f.name
+
 
 class PromptAgent:
     def __init__(
@@ -143,9 +191,6 @@ class PromptAgent:
         return f"data:image/jpeg;base64,{encoded}"
 
     def check_and_print_gpt4o_messages_format(self, all_messages):
-        import re
-        import pprint
-
         def is_base64_image(data_url: str):
             return isinstance(data_url, str) and data_url.startswith("data:image/") and "base64," in data_url
 
@@ -448,25 +493,26 @@ class PromptAgent:
         logger.info("Saved evaluation results to caption_eval_results.json")
         return results    
     def call_llm(self, payload):
-        if True:
+        if self.model.startswith(("gpt", "o")):
+            base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"
+                "Authorization": f"Bearer {require_env('OPENAI_API_KEY')}"
             }
             logger.info("Generating content with GPT model: %s", self.model)
             response = requests.post(
-                "https://openai.wokaai.com/v1/chat/completions",
+                f"{base_url}/chat/completions",
                 headers=headers,
                 json=payload
             )
-            # "https://api.openai.com/v1/chat/completions",
 
             if response.status_code != 200:
-                if response.json()['error']['code'] == "context_length_exceeded":
+                error_payload = response.json()
+                if error_payload.get('error', {}).get('code') == "context_length_exceeded":
                     logger.error("Context length exceeded. Retrying with a smaller context.")
                     payload["messages"] = [payload["messages"][0]] + payload["messages"][-1:]
                     retry_response = requests.post(
-                        "https://4.0.wokaai.com/v1/chat/completions",
+                        f"{base_url}/chat/completions",
                         headers=headers,
                         json=payload
                     )
@@ -518,7 +564,7 @@ class PromptAgent:
             logger.debug("CLAUDE MESSAGE: %s", repr(claude_messages))
 
             headers = {
-                "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                "x-api-key": require_env("ANTHROPIC_API_KEY"),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
             }
@@ -568,7 +614,7 @@ class PromptAgent:
 
             from openai import OpenAI
 
-            client = OpenAI(api_key=os.environ["TOGETHER_API_KEY"],
+            client = OpenAI(api_key=require_env("TOGETHER_API_KEY"),
                             base_url='https://api.together.xyz',
                             )
 
@@ -638,7 +684,7 @@ class PromptAgent:
                 "top_p": top_p
             }
 
-            base_url = "http://127.0.0.1:8000"
+            base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:8000").rstrip("/")
 
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, stream=False)
             if response.status_code == 200:
@@ -696,9 +742,7 @@ class PromptAgent:
                 # gemini_messages[-1]['parts'][1].save("output.png", "PNG")
 
             # print(gemini_messages)
-            api_key = os.environ.get("GENAI_API_KEY")
-            assert api_key is not None, "Please set the GENAI_API_KEY environment variable"
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=require_env("GENAI_API_KEY"))
             logger.info("Generating content with Gemini model: %s", self.model)
             request_options = {"timeout": 120}
             gemini_model = genai.GenerativeModel(self.model)
@@ -759,9 +803,7 @@ class PromptAgent:
                 system_instruction = gemini_messages[0]['parts'][0]
                 gemini_messages.pop(0)
 
-            api_key = os.environ.get("GENAI_API_KEY")
-            assert api_key is not None, "Please set the GENAI_API_KEY environment variable"
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=require_env("GENAI_API_KEY"))
             logger.info("Generating content with Gemini model: %s", self.model)
             request_options = {"timeout": 120}
             gemini_model = genai.GenerativeModel(
@@ -820,7 +862,7 @@ class PromptAgent:
 
             # The implementation based on Groq API
             client = Groq(
-                api_key=os.environ.get("GROQ_API_KEY"),
+                api_key=require_env("GROQ_API_KEY"),
             )
 
             flag = 0
@@ -938,7 +980,10 @@ class PromptAgent:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from datetime import datetime
+
+def require_arg(parser: argparse.ArgumentParser, value: str, name: str) -> None:
+    if not value:
+        parser.error(f"{name} is required for this mode")
 
 def inspect_loaded_messages(reference_file: str, generated_file: str, agent: PromptAgent, sample_size: int = 1):
     """
@@ -962,25 +1007,18 @@ def inspect_loaded_messages(reference_file: str, generated_file: str, agent: Pro
 if __name__ == "__main__":
 
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ref", type = str, default="./data_annotation/coco_test_sub.json")
-    parser.add_argument("--gen", type = str, help="Path to generated captions JSON")
-    parser.add_argument("--img_path", type = str, help="./MSCOCO")
-    parser.add_argument("--inspect", action="store_true", help="Only inspect message structure")
-    parser.add_argument("--multimodal", action="store_true", help="Multimodal input")
-    parser.add_argument("--vqa", action="store_true", help="VQA")
-    parser.add_argument("--ref_answer", type = str, default="./data_annotation/vqav2/v2_mscoco_val2014_annotations_subset.json")
-    parser.add_argument("--ref_question", type = str, default="./data_annotation/vqav2/v2_OpenEnded_mscoco_val2014_questions_subset.json")
-    parser.add_argument("--gen_answer", type = str, help="./MSCOCO")
+    parser = build_parser()
     args = parser.parse_args()
 
     agent = PromptAgent(
-        model="gpt-4o"  # or other model like "gpt-4-vision-preview"
+        model=args.model
     )
 
     if args.inspect:
+        require_arg(parser, args.gen, "--gen")
         inspect_loaded_messages(args.ref, args.gen, agent)
     elif args.multimodal:
+        require_arg(parser, args.img_path, "--img_path")
         # 自动生成时间戳路径
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         output_dir = f"./gpt4o_judge/{timestamp}"
@@ -997,6 +1035,7 @@ if __name__ == "__main__":
 
         print(f"\n✅ 已保存结果至：{output_path}")    
     elif args.vqa:
+        require_arg(parser, args.gen_answer, "--gen_answer")
         # 自动生成时间戳路径
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         output_dir = f"./gpt4o_judge/{timestamp}"
@@ -1016,6 +1055,7 @@ if __name__ == "__main__":
         logger.info(f"Saved VQA evaluation results to {output_path}")
         print(f"\n✅ 已保存结果至：{output_path}")                
     else:
+        require_arg(parser, args.gen, "--gen")
         # 自动生成时间戳路径
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         output_dir = f"./gpt4o_judge/{timestamp}"

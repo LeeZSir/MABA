@@ -1,24 +1,41 @@
-import math
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for MiniCPM-V.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='openbmb/MiniCPM-V-2_6')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
-import numpy as np
 import torch
-import torchvision.transforms as T
 from PIL import Image
 
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.transforms.functional import InterpolationMode
 from transformers import AutoModel, AutoTokenizer
 
 import random
 import os
-import sys
-import re
-import warnings
 import time
-import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
 
 ds_collections = {
@@ -87,15 +104,19 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--image_root', type=str, default='./adv_output/FOA/val2014')
+    parser.add_argument('--out_dir', type=str, default='./vqa_outputs')
+    parser.add_argument('--model_path', type=str, default='openbmb/MiniCPM-V-2_6')
+    parser.add_argument('--cuda_visible_devices', type=str, default='0,1,2')
     args = parser.parse_args()
 
     torch.manual_seed(100)
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     device = 'cuda'
-    model = AutoModel.from_pretrained('openbmb/MiniCPM-V-2_6', trust_remote_code=True,
+    model = AutoModel.from_pretrained(args.model_path, trust_remote_code=True,
         attn_implementation='sdpa', torch_dtype=torch.bfloat16) # sdpa or flash_attention_2, no eager
     model = model.eval().cuda()
-    tokenizer = AutoTokenizer.from_pretrained('openbmb/MiniCPM-V-2_6', trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True)
 
     prompt = '<img>{}</img>{} Answer:'
 
@@ -124,7 +145,7 @@ if __name__ == '__main__':
             # 原始路径
             image_path = image_paths[i]
             # 你希望拼接的前缀路径
-            prefix_path = "./datasets_own/MSCOCO/val2014"
+            prefix_path = args.image_root
             # prefix_path = "./adv_output/AttackVLM/val2014"
             # prefix_path = "./adv_output/AnyAttack/val2014"
             # prefix_path = "./adv_output/FOA/val2014"
@@ -187,7 +208,7 @@ if __name__ == '__main__':
     merged_outputs = outputs
     print(f"Evaluating {args.dataset} ...")
     time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
-    output_dir = './vqa_outputs'
+    output_dir = args.out_dir
     os.makedirs(output_dir, exist_ok=True)  # 确保目录存在
 
     results_file = os.path.join(
@@ -195,4 +216,3 @@ if __name__ == '__main__':
         f'{args.dataset}_{time_prefix}_fs{args.few_shot}_s{args.seed}.json'
     )
     json.dump(merged_outputs, open(results_file, 'w'), ensure_ascii=False)
-

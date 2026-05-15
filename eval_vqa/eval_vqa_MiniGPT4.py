@@ -1,25 +1,44 @@
-import math
+import argparse as _argparse
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+
+def _exit_if_help_requested():
+    if not any(arg in ("-h", "--help") for arg in _sys.argv[1:]):
+        return
+    parser = _argparse.ArgumentParser(description='VQA evaluation for MiniGPT-4.')
+    parser.add_argument("--dataset", default="vqav2_val")
+    parser.add_argument("--image_root", default="./adv_output/FOA/val2014")
+    parser.add_argument("--out_dir", default="./vqa_outputs")
+    parser.add_argument("--checkpoint", default="")
+    parser.add_argument("--model_path", default='./configs/minigpt4_eval.yaml')
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--few-shot", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.print_help()
+    raise SystemExit(0)
+
+
+_exit_if_help_requested()
+
 import argparse
 import numpy as np
 from PIL import Image
 import random
 import os
 import sys
-import re
-import warnings
 import time
-import datetime
 import json
-from pathlib import Path
 from tqdm import tqdm
 
 import torch.backends.cudnn as cudnn
 import torch
-import torchvision.transforms as T
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.transforms.functional import InterpolationMode
-from transformers import AutoModel, AutoTokenizer, StoppingCriteriaList
+from transformers import StoppingCriteriaList
 
 from minigpt4.common.config import Config
 from minigpt4.common.registry import registry
@@ -182,6 +201,8 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--image_root', type=str, default='./adv_output/FOA/val2014')
+    parser.add_argument('--out_dir', type=str, default='./vqa_outputs')
     # minigpt-4
     parser.add_argument("--cfg_path", default="./configs/minigpt4_eval.yaml")
     parser.add_argument("--data_path", default="./data_annotation/coco_test_sub.json", type=str)
@@ -200,7 +221,7 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
     print("output_path:", args.output_path)
-    print(f"Loading MiniGPT-4 models..")
+    print("Loading MiniGPT-4 models..")
     cfg = Config(args)
     if args.llama_path:
         cfg.config["model"]["llama_model"]=args.llama_path
@@ -208,7 +229,7 @@ if __name__ == '__main__':
         cfg.config["model"]["ckpt"]=args.ckpt_path
 
     chat, CONV_VISION=initialize_model(cfg)
-    print(f"Done")
+    print("Done")
 
     prompt = '<img>{}</img>{} Answer:'
 
@@ -240,7 +261,7 @@ if __name__ == '__main__':
             # prefix_path = "./datasets_own/MSCOCO/val2014"
             # prefix_path = "./adv_output/AttackVLM/val2014"
             # prefix_path = "./adv_output/AnyAttack/val2014"
-            prefix_path = "./adv_output/FOA/val2014"
+            prefix_path = args.image_root
             # prefix_path = "./adv_output/TYAFCQformer-ITC-0.362.5-11-17Layers/val2014"
             # 提取文件名
             filename = os.path.basename(image_path)
@@ -291,7 +312,7 @@ if __name__ == '__main__':
     merged_outputs = outputs
     print(f"Evaluating {args.dataset} ...")
     time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
-    output_dir = './vqa_outputs'
+    output_dir = args.out_dir
     os.makedirs(output_dir, exist_ok=True)  # 确保目录存在
 
     results_file = os.path.join(
@@ -299,4 +320,3 @@ if __name__ == '__main__':
         f'{args.dataset}_{time_prefix}_fs{args.few_shot}_s{args.seed}.json'
     )
     json.dump(merged_outputs, open(results_file, 'w'), ensure_ascii=False)
-

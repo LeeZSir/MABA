@@ -5,7 +5,7 @@ model:
   end_sym: "</s>"
   low_resource: False
   prompt_template: '[INST] {} [/INST] '
-  ckpt: 'please set this value to the path of llama2-chat-7b'
+  ckpt: "please set this value to the path of llama2-chat-7b"
 
 
 datasets:
